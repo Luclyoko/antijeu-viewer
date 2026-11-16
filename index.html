@@ -74,6 +74,10 @@ details>summary{cursor:pointer;font-weight:600}
     <div class="mut small">Un journal brut <code>.ndjson</code> marche aussi, mais sans les signalements.</div>
     <input id="file" type="file" accept=".gz,.ndjson,.json,.txt" class="hidden">
   </div>
+  <form id="urlform" class="row2" style="margin-top:8px">
+    <input id="url" type="url" placeholder="…ou colle le lien du fichier Discord (clic droit sur le fichier → Copier le lien)" style="flex:1;min-width:220px">
+    <button class="primary">Charger</button>
+  </form>
   <p id="error" class="err hidden"></p>
 
   <section id="app" class="hidden">
@@ -327,7 +331,28 @@ function rowHtml(r) {
   return `<li><span class="t">${mmss(r.t)}</span><span class="ty ${r.cat}">${TYPE_LABEL[r.cat]}</span><span class="d">${r.parts.map(pspan).join("")}${tags}${pos(r.pos)}</span></li>`;
 }
 
-async function load(file) {
+function fail(msg) {
+  $("error").textContent = msg; $("error").classList.remove("hidden");
+  if (!M) $("drop").querySelector("strong").innerHTML = "Dépose le fichier <code>…-rapport.ndjson.gz</code> ici";
+}
+
+/** Seuls les fichiers hébergés par Discord sont chargés par lien (pas de faux rapport servi depuis un autre site). */
+async function loadUrl(raw) {
+  let u;
+  try { u = new URL(raw.trim()); } catch { return fail("Ce n'est pas un lien valide."); }
+  if (u.protocol !== "https:" || !["cdn.discordapp.com", "media.discordapp.net"].includes(u.hostname) || !u.pathname.startsWith("/attachments/"))
+    return fail("Seuls les liens de fichiers Discord (cdn.discordapp.com/attachments/…) sont acceptés.");
+  $("error").classList.add("hidden");
+  $("drop").querySelector("strong").textContent = "Téléchargement du fichier Discord…";
+  let res;
+  try { res = await fetch(u.href, {credentials: "omit"}); }
+  catch { return fail("Le navigateur n'a pas pu récupérer le fichier. Télécharge-le depuis Discord et dépose-le ici."); }
+  if (!res.ok) return fail(`Lien expiré ou invalide (HTTP ${res.status}) : les liens Discord expirent au bout d'environ 24 h. Dans Discord, clic droit sur le fichier → Copier le lien, puis colle-le ci-dessus.`);
+  const name = decodeURIComponent(u.pathname.split("/").pop() || "rapport");
+  load(await res.blob(), name);
+}
+
+async function load(file, name = file.name) {
   $("error").classList.add("hidden");
   try {
     let stream = file.stream();
@@ -337,12 +362,10 @@ async function load(file) {
     if (!parsed.events.length) throw new Error("aucun événement lisible dans ce fichier");
     M = buildModel(parsed);
   } catch (ex) {
-    $("error").textContent = "Fichier illisible : " + ex.message;
-    $("error").classList.remove("hidden");
-    return;
+    return fail("Fichier illisible : " + ex.message);
   }
   $("drop").classList.add("compact");
-  $("drop").querySelector("strong").textContent = file.name + " — déposer un autre fichier";
+  $("drop").querySelector("strong").textContent = name + " — déposer un autre fichier";
   $("app").classList.remove("hidden");
   resetFilters();
   renderHead(); renderFlags(); renderPlayers();
@@ -425,6 +448,12 @@ $("file").onchange = e => { if (e.target.files[0]) load(e.target.files[0]); e.ta
 for (const ev of ["dragenter", "dragover"]) document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); });
 for (const ev of ["dragleave", "drop"]) document.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); });
 document.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) load(f); });
+
+$("urlform").onsubmit = e => { e.preventDefault(); loadUrl($("url").value); };
+// lien direct du webhook : #f=<lien du fichier Discord> (fragment, jamais envoyé au serveur de la page)
+const fromHash = () => { const f = new URLSearchParams(location.hash.slice(1)).get("f"); if (f) { $("url").value = f; loadUrl(f); } };
+window.addEventListener("hashchange", fromHash);
+fromHash();
 
 $("tab-flags").onclick = () => showTab("flags");
 $("tab-all").onclick = () => showTab("all");
