@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Visualiseur anti-jeu</title>
+<style>
+:root{--bg:#f7f7f9;--fg:#1d1d1f;--mut:#6b6b73;--card:#fff;--line:#dcdce2;--acc:#3b6fe0;--chip:#eef1f8;
+  --red:#d93a3f;--orange:#d9822b;--purple:#8a4fd6;--yellow:#b8960c;--green:#2f9e55;--sel:#e6edff}
+@media (prefers-color-scheme:dark){:root{--bg:#141418;--fg:#e8e8ee;--mut:#9a9aa6;--card:#1f1f25;--line:#34343d;--acc:#7aa2ff;
+  --chip:#2a2d38;--red:#ff6b6f;--orange:#f0a050;--purple:#b48cff;--yellow:#e3c13b;--green:#5fd18a;--sel:#283152}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1100px;margin:auto;padding:16px}
+h1{font-size:1.35em;margin:0 0 4px}h2{font-size:1.1em;margin:0 0 8px}
+.mut{color:var(--mut)}.small{font-size:.86em}
+button,input,select{font:inherit;color:inherit}
+button{background:var(--chip);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+input[type=text],input:not([type]),select{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin:10px 0}
+#drop{border:2px dashed var(--line);border-radius:10px;padding:32px 16px;text-align:center;background:var(--card);cursor:pointer}
+#drop.over{border-color:var(--acc);background:var(--sel)}
+#drop.compact{padding:10px;text-align:left}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:16px 0 0}
+.tabs button{border:none;border-bottom:2px solid transparent;border-radius:0;background:none;padding:8px 14px;font-weight:600;color:var(--mut)}
+.tabs button.on{color:var(--fg);border-bottom-color:var(--acc)}
+.flag{border-left:4px solid var(--line)}
+.flag.EARLY_KILL{border-left-color:var(--red)}.flag.PACE_KILLS,.flag.PACE_ENGAGEMENTS{border-left-color:var(--orange)}
+.flag.MASSACRE{border-left-color:var(--purple)}.flag.TEAMING{border-left-color:var(--yellow)}
+.flag ul{margin:6px 0;padding-left:20px}.flag li{margin:2px 0}
+.flag .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 16px;align-items:start}
+.filters label.f{display:block;font-weight:600;font-size:.86em;margin-bottom:3px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:.88em;cursor:pointer;user-select:none}
+.chip input{margin:0}
+.chip.off{opacity:.45}
+.chip b{cursor:pointer;font-weight:700;margin-left:2px}
+.row2{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.row2 input{width:80px}
+#rows{list-style:none;margin:0;padding:0}
+#rows li,.evlist li{display:grid;grid-template-columns:52px 92px 1fr;gap:8px;padding:5px 6px;border-bottom:1px solid var(--line);align-items:baseline}
+.evlist{list-style:none;margin:8px 0 0;padding:0;max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+.t{font-family:ui-monospace,Consolas,monospace;color:var(--mut)}
+.ty{font-size:.78em;font-weight:700;text-transform:uppercase;letter-spacing:.02em;padding:1px 6px;border-radius:4px;background:var(--chip);text-align:center;white-space:nowrap}
+.ty.HIT{color:var(--red)}.ty.DAMAGE{color:var(--orange)}.ty.POWER{color:var(--acc)}.ty.DEATH{color:var(--fg);background:var(--line)}
+.ty.REVIVE{color:var(--green)}.ty.GROUP{color:var(--yellow)}.ty.ROLE{color:var(--purple)}
+.d{overflow-wrap:anywhere}
+.p{font-weight:600;cursor:pointer;border-bottom:1px dotted var(--mut)}
+.p:hover{color:var(--acc)}
+.tag{font-size:.78em;border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-left:4px;color:var(--mut)}
+.tag.eng{border-color:var(--red);color:var(--red)}
+.pos{font-size:.82em;color:var(--mut);margin-left:6px}
+table{border-collapse:collapse;width:100%;font-size:.92em}
+th,td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{cursor:pointer;user-select:none}th:hover{color:var(--acc)}
+td.n,th.n{text-align:right}
+.tblwrap{overflow-x:auto}
+details>summary{cursor:pointer;font-weight:600}
+.hidden{display:none!important}
+.err{color:var(--red)}
+@media (max-width:600px){#rows li,.evlist li{grid-template-columns:44px 1fr}#rows .ty,.evlist .ty{display:none}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Visualiseur anti-jeu</h1>
+  <p class="mut small">Le fichier est lu dans ton navigateur et n'est envoyé nulle part. Les signalements sont à vérifier par le staff : aucun n'est une preuve.</p>
+
+  <div id="drop" tabindex="0">
+    <strong>Dépose le fichier <code>…-rapport.ndjson.gz</code> ici</strong> ou clique pour le choisir
+    <div class="mut small">Un journal brut <code>.ndjson</code> marche aussi, mais sans les signalements.</div>
+    <input id="file" type="file" accept=".gz,.ndjson,.json,.txt" class="hidden">
+  </div>
+  <p id="error" class="err hidden"></p>
+
+  <section id="app" class="hidden">
+    <div class="card" id="head"></div>
+    <nav class="tabs">
+      <button id="tab-flags" class="on">Signalements</button>
+      <button id="tab-all">Toutes les actions</button>
+    </nav>
+
+    <div id="view-flags"></div>
+
+    <div id="view-all" class="hidden">
+      <details class="card" id="players-box">
+        <summary>Joueurs</summary>
+        <p class="mut small">Clique sur un pseudo pour filtrer les actions sur ce joueur, ou sur un titre de colonne pour trier.</p>
+        <div class="tblwrap"><table id="players"></table></div>
+      </details>
+
+      <div class="card">
+        <div class="filters">
+          <div style="grid-column:1/-1">
+            <label class="f">Types d'événements</label>
+            <div class="chips" id="f-types"></div>
+          </div>
+          <div>
+            <label class="f" for="f-player">Joueurs</label>
+            <input id="f-player" list="names" placeholder="Ajouter un joueur…" autocomplete="off">
+            <datalist id="names"></datalist>
+            <div class="chips" id="f-players" style="margin-top:4px"></div>
+            <div class="row2 small" style="margin-top:4px">
+              <select id="f-mode" title="Lien entre les joueurs choisis">
+                <option value="any">Impliquant l'un d'eux</option>
+                <option value="between">Entre eux uniquement</option>
+              </select>
+              <select id="f-side" title="Place du joueur dans l'action">
+                <option value="any">auteur ou cible</option>
+                <option value="actor">auteur</option>
+                <option value="target">cible</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="f">Temps de jeu</label>
+            <div class="row2"><input id="f-from" placeholder="00:00"> → <input id="f-to" placeholder="fin"></div>
+            <div class="small mut">Format MM:SS ou minutes</div>
+          </div>
+          <div>
+            <label class="f" for="f-text">Recherche</label>
+            <input id="f-text" placeholder="pouvoir, cause, rôle…" style="width:100%">
+            <label class="small" style="display:block;margin-top:6px"><input type="checkbox" id="f-eng"> Engagements de combat uniquement</label>
+            <label class="small" style="display:block"><input type="checkbox" id="f-out"> Masquer ce qui est hors période analysée</label>
+          </div>
+        </div>
+        <div class="row2" style="margin-top:10px;justify-content:space-between">
+          <span id="count" class="mut"></span>
+          <button id="f-reset">Réinitialiser les filtres</button>
+        </div>
+      </div>
+      <ul id="rows"></ul>
+      <div style="text-align:center;margin:12px"><button id="more" class="hidden">Afficher plus</button></div>
+    </div>
+  </section>
+</main>
+
+<script id="core">
+"use strict";
+// ---------------------------------------------------------------- logique pure (testée sous Node, sans DOM)
+const CAUSES = {FALL:"chute",LAVA:"lave",FIRE:"feu",FIRE_TICK:"feu",BLOCK_EXPLOSION:"explosion",ENTITY_EXPLOSION:"explosion",
+  VOID:"vide",DROWNING:"noyade",POISON:"poison",WITHER:"wither",MAGIC:"magie",SUFFOCATION:"suffocation",ENTITY_ATTACK:"coup",
+  PROJECTILE:"projectile",CONTACT:"cactus",STARVATION:"faim",LIGHTNING:"foudre",THORNS:"épines",FALLING_BLOCK:"bloc",
+  CUSTOM:"pouvoir",DECONNECTION:"déconnexion"};
+const KINDS = {health:"dégâts directs",maxHealth:"vie max retirée",effect:"effet",fire:"feu",explosion:"explosion",bukkit:""};
+const GROUP_KINDS = {formed:"formé",split:"séparé",merged:"fusionné",changed:"modifié",dissolved:"dissous"};
+const TYPES = [
+  ["HIT","Coups",["HIT"]],["DAMAGE","Dégâts",["DAMAGE"]],["POWER","Pouvoirs",["POWER"]],["DEATH","Morts",["DEATH"]],
+  ["REVIVE","Réanimations",["REVIVE"]],["ROLE","Rôles",["ROLE"]],["GROUP","Groupes",["GROUP"]],["CONN","Connexions",["JOIN","QUIT"]],
+  ["GAME","Partie",["GAME_START","ACTIVATED","DEACTIVATED","GAME_END"]]];
+const TYPE_OF = {}; for (const [k,,ts] of TYPES) for (const t of ts) TYPE_OF[t] = k;
+const TYPE_LABEL = {HIT:"coup",DAMAGE:"dégâts",POWER:"pouvoir",DEATH:"mort",REVIVE:"réa",ROLE:"rôle",GROUP:"groupe",CONN:"connexion",GAME:"partie"};
+
+const mmss = t => String(Math.floor(t/60)).padStart(2,"0") + ":" + String(t%60).padStart(2,"0");
+const pv = v => (typeof v === "number" ? v : 0).toFixed(1).replace(".", ",");
+const cause = c => c == null ? "inconnue" : (CAUSES[c] ?? String(c).toLowerCase());
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+
+/** "12:30", "12", "1:02:03" → secondes ; vide → null ; illisible → NaN. */
+function parseTime(s) {
+  s = String(s ?? "").trim();
+  if (!s) return null;
+  if (!/^\d+(:\d{1,2}){0,2}$/.test(s)) return NaN;
+  const p = s.split(":").map(Number);
+  if (p.length === 1) return p[0] * 60;
+  if (p.length === 2) return p[0] * 60 + p[1];
+  return p[0] * 3600 + p[1] * 60 + p[2];
+}
+
+/**
+ * Lit le texte NDJSON. Les lignes vides et illisibles sont ignorées comme côté serveur, donc idx = indice serveur
+ * (référencé par REPORT.engagements). La ligne REPORT (dernière) n'est pas un événement.
+ */
+function parseJournal(text) {
+  const events = []; let report = null, unreadable = 0;
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    let e;
+    try { e = JSON.parse(line); } catch { unreadable++; continue; }
+    // mêmes rejets que JournalEvent.fromJson (Gson), sinon les idx des engagements se décaleraient
+    const obj = o => o != null && typeof o === "object" && !Array.isArray(o);
+    if (!obj(e) || typeof e.t !== "number" || typeof e.ms !== "number" || (e.data != null && !obj(e.data))
+      || (e.type != null && typeof e.type !== "string")) { unreadable++; continue; }
+    if (e.type === "REPORT") { report = e.data || {}; continue; }
+    e.t = Math.trunc(e.t); e.data = e.data || {}; e.type = e.type ?? "?";
+    events.push(e);
+  }
+  return {events, report, unreadable};
+}
+
+/** Construit le modèle de la partie : noms, rôles au fil du temps, lignes affichables, statistiques par joueur. */
+function buildModel(parsed) {
+  const {events, report} = parsed;
+  const names = new Map(), role = new Map(), stats = new Map();
+  const engaged = new Set((report && report.engagements) || []);
+  let activatedAt = null, deactivatedAt = null, endTime = 0;
+  for (const e of events) {
+    if (e.type === "ACTIVATED") activatedAt = e.t;
+    if (e.type === "DEACTIVATED") deactivatedAt = e.t;
+    endTime = Math.max(endTime, e.t);
+  }
+  const inWindow = t => (activatedAt == null || t >= activatedAt) && (deactivatedAt == null || t <= deactivatedAt);
+
+  const P = o => { if (!o || !o.uuid) return null; if (o.name) names.set(o.uuid, o.name); return o.uuid; };
+  const st = u => { let s = stats.get(u); if (!s) stats.set(u, s = {uuid:u, kills:0, deaths:0, hitsDone:0, dmgDone:0, hitsTaken:0, dmgTaken:0, powers:0, quits:0, revives:0, alive:true}); return s; };
+  const setRole = (u, d) => { role.set(u, {role:d.role, team:d.winningTeam, forms:d.forms || [], canAlly:!!d.canAlly}); st(u); };
+
+  const rows = [];
+  events.forEach((e, idx) => {
+    const d = e.data, row = {idx, t:e.t, type:e.type, cat:TYPE_OF[e.type] || "GAME", actor:null, targets:[], parts:[], pos:null, eng:engaged.has(idx), inWindow:inWindow(e.t)};
+    const who = u => ({p:u, role:role.get(u)}); // le rôle au moment de l'événement
+    switch (e.type) {
+      case "GAME_START": case "ACTIVATED": {
+        for (const p of d.players || []) { const u = P(p); if (!u) continue; st(u).alive = p.alive !== false; if (p.role !== undefined) setRole(u, p); }
+        row.parts = [e.type === "GAME_START" ? "Début de l'enregistrement" : "Anti-jeu activé en cours de partie", ` — ${(d.players || []).length} joueur(s)`];
+        break;
+      }
+      case "DEACTIVATED": row.parts = ["Anti-jeu désactivé"]; break;
+      case "GAME_END": row.parts = [d.interrupted ? "Partie interrompue (arrêt du serveur ou crash)" : "Fin de partie"]; break;
+      case "ROLE": {
+        const u = P(d.player); setRole(u, d); row.actor = u;
+        row.parts = [who(u), ` : ${d.role ?? "?"}`, d.winningTeam ? ` — camp ${d.winningTeam}` : "",
+          d.forms && d.forms.length ? ` — forme ${d.forms.join(", ")}` : "", d.canAlly ? " — peut s'allier" : ""];
+        break;
+      }
+      case "HIT": {
+        const a = P(d.attacker), v = P(d.victim); row.actor = a; row.targets = [v]; row.pos = d.position;
+        row.parts = [who(a), " → ", who(v), ` : ${pv(d.damage)} PV (${cause(d.cause)}${d.projectile ? ", " + d.projectile.toLowerCase() : ""})`,
+          ` — PV après : `, who(a), ` ${pv(d.attackerHealth)}, `, who(v), ` ${pv(d.victimHealth)}`, d.group != null ? ` — groupe n°${d.group}` : ""];
+        if (row.inWindow) { const sa = st(a), sv = st(v); sa.hitsDone++; sa.dmgDone += +d.damage || 0; sv.hitsTaken++; sv.dmgTaken += +d.damage || 0; }
+        break;
+      }
+      case "DAMAGE": {
+        const o = d.origin || {}, op = o.player || null, v = P(d.target);
+        row.actor = op; row.targets = v ? [v] : []; row.pos = d.location || null;
+        const src = o.kind === "power" ? `pouvoir ${o.name ?? "?"}` : o.kind === "event" ? `événement ${o.name ?? "?"}` : o.kind === "player" ? (o.name ?? "rôle") : null;
+        if (!v) { // explosion sans cible : les dégâts subis suivent en DAMAGE bukkit
+          row.parts = ["Explosion", op ? " de " : "", op ? who(op) : "", src ? ` (${src})` : "", d.power != null ? ` — puissance ${d.power}` : ""];
+          break;
+        }
+        const k = d.kind === "bukkit" ? cause(d.cause) : (KINDS[d.kind] ?? d.kind);
+        row.parts = [who(v), ` subit ${d.amount != null ? pv(d.amount) + " PV" : ""}${d.seconds != null ? d.seconds + " s" : ""} (${k}${d.effect ? " " + d.effect.toLowerCase() : ""})`,
+          op ? " — par " : "", op ? who(op) : "", src ? ` (${src})` : "", d.health != null ? ` — PV après ${pv(d.health)}` : ""];
+        if (row.inWindow && d.amount != null && d.kind !== "maxHealth" && d.kind !== "effect") st(v).dmgTaken += +d.amount || 0;
+        if (row.inWindow && op && op !== v && d.amount != null && d.kind !== "maxHealth" && d.kind !== "effect") st(op).dmgDone += +d.amount || 0;
+        break;
+      }
+      case "POWER": {
+        const s = P(d.source), ts = (d.targets || []).map(P).filter(Boolean); row.actor = s; row.targets = ts;
+        row.parts = [who(s), ` active ${d.power ?? "?"}`];
+        if (ts.length) { row.parts.push(" sur "); ts.forEach((u, i) => { if (i) row.parts.push(", "); row.parts.push(who(u)); }); }
+        if (d.roleAbility) row.tags = ["capacité de rôle"];
+        if (row.inWindow) st(s).powers++;
+        break;
+      }
+      case "DEATH": {
+        const v = P(d.victim), k = d.killer ? P(d.killer) : null; row.actor = k; row.targets = [v]; row.pos = d.position || null;
+        row.parts = [who(v), d.deconnection ? " meurt (délai de déconnexion dépassé)" : ` meurt (${cause(d.cause)})`, k ? " — tué par " : "", k ? who(k) : ""];
+        const sv = st(v); sv.alive = false; if (row.inWindow) { sv.deaths++; if (k && k !== v) st(k).kills++; }
+        break;
+      }
+      case "REVIVE": { const u = P(d.player); row.actor = u; row.parts = ["Réanimation de ", who(u)]; const s = st(u); s.alive = true; if (row.inWindow) s.revives++; break; }
+      case "JOIN": { const u = P(d.player); row.actor = u; row.parts = [who(u), " se reconnecte"]; break; }
+      case "QUIT": { const u = P(d.player); row.actor = u; row.parts = [who(u), " se déconnecte"]; if (row.inWindow) st(u).quits++; break; }
+      case "GROUP": {
+        const ms = (d.members || []).map(P).filter(Boolean); row.targets = ms;
+        row.parts = [`Groupe n°${d.id} ${GROUP_KINDS[d.kind] ?? d.kind}`, d.from && d.from.length ? ` (depuis n°${d.from.join(", n°")})` : "", ms.length ? " : " : ""];
+        ms.forEach((u, i) => { if (i) row.parts.push(", "); row.parts.push(who(u)); });
+        break;
+      }
+      default: row.parts = [e.type + " " + JSON.stringify(d)];
+    }
+    row.players = new Set([row.actor, ...row.targets].filter(Boolean));
+    rows.push(row);
+  });
+  const name = u => names.get(u) ?? (u ? String(u).slice(0, 8) : "?");
+  for (const r of rows) r.text = (TYPE_LABEL[r.cat] + " " + r.parts.map(p => typeof p === "string" ? p : name(p.p) + " " + (p.role ? p.role.role + " " + (p.role.team ?? "") : "")).join("")).toLowerCase();
+  for (const [u, s] of stats) s.role = role.get(u) || null;
+  return {rows, names, name, stats:[...stats.values()], report, unreadable:parsed.unreadable, activatedAt, deactivatedAt, endTime};
+}
+
+/** f = {cats:Set, players:[uuid], mode:"any"|"between", side:"any"|"actor"|"target", from, to, text, eng, out}. */
+function matches(r, f) {
+  if (!f.cats.has(r.cat)) return false;
+  if (f.from != null && r.t < f.from) return false;
+  if (f.to != null && r.t > f.to) return false;
+  if (f.eng && !r.eng) return false;
+  if (f.out && !r.inWindow) return false;
+  if (f.players.length) {
+    const sel = new Set(f.players);
+    if (f.mode === "between") {
+      if (r.cat === "GROUP") { if ([...r.players].filter(u => sel.has(u)).length < Math.min(2, sel.size)) return false; }
+      else if (sel.size >= 2) { if (!(r.actor && sel.has(r.actor) && r.targets.some(u => u !== r.actor && sel.has(u)))) return false; }
+      else if (!r.players.has(f.players[0])) return false;
+    } else {
+      const ok = f.side === "actor" ? sel.has(r.actor) : f.side === "target" ? r.targets.some(u => sel.has(u)) : [...r.players].some(u => sel.has(u));
+      if (!ok) return false;
+    }
+  }
+  if (f.text && !r.text.includes(f.text)) return false;
+  return true;
+}
+
+if (typeof module !== "undefined") module.exports = {parseJournal, buildModel, matches, parseTime, mmss, pv, esc, TYPES};
+</script>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- interface
+const $ = id => document.getElementById(id);
+const PAGE = 300;
+let M = null, shown = PAGE, sortKey = "kills", sortDir = -1;
+const F = {cats:new Set(TYPES.map(t => t[0])), players:[], mode:"any", side:"any", from:null, to:null, text:"", eng:false, out:false};
+
+function pspan(part) {
+  if (typeof part === "string") return esc(part);
+  const r = part.role, tip = r ? `${r.role ?? "?"}${r.team ? " — camp " + r.team : ""}${r.forms && r.forms.length ? " — " + r.forms.join(", ") : ""}` : "rôle inconnu";
+  return `<span class="p" data-u="${esc(part.p)}" title="${esc(tip)}">${esc(M.name(part.p))}</span>`;
+}
+function pos(p) { return p ? `<span class="pos">${p.world && p.world !== "world" ? esc(p.world) + " " : ""}${Math.round(p.x)}, ${Math.round(p.y)}, ${Math.round(p.z)}</span>` : ""; }
+function rowHtml(r) {
+  const tags = (r.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("") + (r.eng ? `<span class="tag eng" title="Cette action engage un combat">engage</span>` : "")
+    + (r.inWindow ? "" : `<span class="tag" title="Hors de la période analysée (anti-jeu désactivé)">hors analyse</span>`);
+  return `<li><span class="t">${mmss(r.t)}</span><span class="ty ${r.cat}">${TYPE_LABEL[r.cat]}</span><span class="d">${r.parts.map(pspan).join("")}${tags}${pos(r.pos)}</span></li>`;
+}
+
+async function load(file) {
+  $("error").classList.add("hidden");
+  try {
+    let stream = file.stream();
+    const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+    if (head[0] === 0x1f && head[1] === 0x8b) stream = stream.pipeThrough(new DecompressionStream("gzip"));
+    const parsed = parseJournal(await new Response(stream).text());
+    if (!parsed.events.length) throw new Error("aucun événement lisible dans ce fichier");
+    M = buildModel(parsed);
+  } catch (ex) {
+    $("error").textContent = "Fichier illisible : " + ex.message;
+    $("error").classList.remove("hidden");
+    return;
+  }
+  $("drop").classList.add("compact");
+  $("drop").querySelector("strong").textContent = file.name + " — déposer un autre fichier";
+  $("app").classList.remove("hidden");
+  resetFilters();
+  renderHead(); renderFlags(); renderPlayers();
+  $("names").innerHTML = [...M.names.values()].sort((a, b) => a.localeCompare(b)).map(n => `<option value="${esc(n)}">`).join("");
+  showTab(M.report ? "flags" : "all");
+}
+
+function renderHead() {
+  const R = M.report, notes = R ? R.notes || [] : [];
+  const alive = M.stats.filter(s => s.alive).length;
+  let h = `<h2>${esc(R ? R.title : "Journal brut (sans analyse)")}</h2><div class="mut">${R && R.date ? esc(R.date) + " — " : ""}durée couverte ${mmss(M.endTime)} — ${M.stats.length} joueur(s), ${alive} en vie à la fin — ${M.rows.length} événement(s)</div>`;
+  for (const n of notes) h += `<div>${esc(n)}</div>`;
+  if (!R) h += `<div>Ce fichier ne contient pas l'analyse du serveur : utilise le fichier <code>-rapport.ndjson.gz</code> pour voir les signalements.</div>`;
+  if (M.unreadable) h += `<div class="mut">${M.unreadable} ligne(s) illisible(s) ignorée(s)</div>`;
+  $("head").innerHTML = h;
+  $("tab-flags").textContent = `Signalements (${R && R.flags ? R.flags.length : "—"})`;
+  $("tab-all").textContent = `Toutes les actions (${M.rows.length})`;
+}
+
+function flagRows(f) {
+  const from = Math.max(0, f.start - 30), ps = new Set(f.players || []);
+  return M.rows.filter(r => r.t >= from && r.t <= f.end && r.cat !== "GAME" && (ps.size === 0 ? (r.cat === "DEATH" || r.cat === "HIT") : [...r.players].some(u => ps.has(u))));
+}
+function renderFlags() {
+  const R = M.report, box = $("view-flags");
+  if (!R) { box.innerHTML = `<div class="card mut">Pas d'analyse dans ce fichier.</div>`; return; }
+  const flags = R.flags || [];
+  if (!flags.length) { box.innerHTML = `<div class="card">Rien de suspect n'a été repéré. Tu peux quand même parcourir toutes les actions de la partie.</div>`; return; }
+  box.innerHTML = flags.map((f, i) => {
+    const who = (f.players || []).map(u => pspan({p:u, role:(M.stats.find(s => s.uuid === u) || {}).role})).join(f.type === "EARLY_KILL" ? " → " : ", ");
+    return `<div class="card flag ${esc(f.type)}">
+      <div><strong>${esc(f.icon || "")} ${esc(f.label || f.type)}</strong>${who ? " — " + who : ""} <span class="mut">${mmss(f.start)} → ${mmss(f.end)}</span></div>
+      <ul>${(f.context || []).map(c => `<li>${esc(c)}</li>`).join("")}</ul>
+      <div class="acts"><button data-open="${i}">Voir les actions autour</button><button class="primary" data-goto="${i}">Ouvrir dans la vue complète</button></div>
+      <ul class="evlist hidden" id="ev-${i}"></ul></div>`;
+  }).join("");
+}
+
+function renderPlayers() {
+  const cols = [["name","Joueur"],["role","Rôle (final)"],["team","Camp"],["kills","Kills directs",1],["deaths","Morts",1],["hitsDone","Coups donnés",1],
+    ["dmgDone","Dégâts infligés",1],["hitsTaken","Coups reçus",1],["dmgTaken","Dégâts reçus",1],["powers","Pouvoirs",1],["quits","Déco.",1]];
+  const val = (s, k) => k === "name" ? M.name(s.uuid).toLowerCase() : k === "role" ? (s.role?.role ?? "") : k === "team" ? (s.role?.team ?? "") : s[k];
+  const list = [...M.stats].sort((a, b) => { const x = val(a, sortKey), y = val(b, sortKey); return (x < y ? -1 : x > y ? 1 : 0) * sortDir; });
+  $("players").innerHTML = `<thead><tr>${cols.map(([k, l, n]) => `<th class="${n ? "n" : ""}" data-sort="${k}">${l}${sortKey === k ? (sortDir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead><tbody>`
+    + list.map(s => `<tr><td>${pspan({p:s.uuid, role:s.role})}${s.alive ? "" : ` <span class="tag">mort</span>`}</td><td>${esc(s.role?.role ?? "?")}</td><td>${esc(s.role?.team ?? "")}</td>`
+      + cols.slice(3).map(([k]) => `<td class="n">${k.startsWith("dmg") ? pv(s[k]) : s[k]}</td>`).join("") + "</tr>").join("") + "</tbody>";
+}
+
+function renderFilterChips() {
+  $("f-types").innerHTML = TYPES.map(([k, l]) => `<label class="chip ${F.cats.has(k) ? "" : "off"}"><input type="checkbox" data-cat="${k}" ${F.cats.has(k) ? "checked" : ""}>${l}</label>`).join("")
+    + `<button class="small" id="f-all">Tous</button> <button class="small" id="f-combat">Combat seulement</button>`;
+  $("f-players").innerHTML = F.players.map(u => `<span class="chip">${esc(M.name(u))}<b data-rm="${esc(u)}" title="Retirer">×</b></span>`).join("");
+  $("f-side").disabled = F.mode === "between";
+}
+function renderRows() {
+  const list = M.rows.filter(r => matches(r, F));
+  $("count").textContent = `${list.length} événement(s) sur ${M.rows.length}`;
+  $("rows").innerHTML = list.slice(0, shown).map(rowHtml).join("") || `<li class="mut" style="display:block">Aucun événement ne correspond aux filtres.</li>`;
+  $("more").classList.toggle("hidden", list.length <= shown);
+  $("more").textContent = `Afficher plus (${list.length - shown} restants)`;
+}
+function refresh() { shown = PAGE; renderFilterChips(); renderRows(); }
+function resetFilters() {
+  F.cats = new Set(TYPES.map(t => t[0])); F.players = []; F.mode = "any"; F.side = "any"; F.from = F.to = null; F.text = ""; F.eng = F.out = false;
+  for (const id of ["f-from", "f-to", "f-text", "f-player"]) $(id).value = "";
+  $("f-mode").value = "any"; $("f-side").value = "any"; $("f-eng").checked = $("f-out").checked = false;
+  refresh();
+}
+function addPlayer(u) { if (u && !F.players.includes(u)) F.players.push(u); refresh(); }
+function showTab(which) {
+  $("tab-flags").classList.toggle("on", which === "flags"); $("tab-all").classList.toggle("on", which === "all");
+  $("view-flags").classList.toggle("hidden", which !== "flags"); $("view-all").classList.toggle("hidden", which !== "all");
+}
+
+// ---------------------------------------------------------------- événements
+const drop = $("drop");
+drop.onclick = e => { if (e.target.id !== "file") $("file").click(); };
+drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") $("file").click(); };
+$("file").onchange = e => { if (e.target.files[0]) load(e.target.files[0]); e.target.value = ""; };
+for (const ev of ["dragenter", "dragover"]) document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); });
+for (const ev of ["dragleave", "drop"]) document.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); });
+document.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) load(f); });
+
+$("tab-flags").onclick = () => showTab("flags");
+$("tab-all").onclick = () => showTab("all");
+
+document.addEventListener("click", e => {
+  const t = e.target;
+  if (t.dataset.u !== undefined && t.classList.contains("p")) { addPlayer(t.dataset.u); showTab("all"); return; }
+  if (t.dataset.open !== undefined) {
+    const f = M.report.flags[+t.dataset.open], ul = $("ev-" + t.dataset.open), open = ul.classList.toggle("hidden") === false;
+    if (open) { const rs = flagRows(f); ul.innerHTML = rs.slice(0, 1000).map(rowHtml).join("") || `<li class="mut" style="display:block">Aucune action enregistrée.</li>`; }
+    t.textContent = open ? "Masquer les actions" : "Voir les actions autour";
+    return;
+  }
+  if (t.dataset.goto !== undefined) {
+    const f = M.report.flags[+t.dataset.goto];
+    resetFilters();
+    F.players = [...(f.players || [])];
+    F.from = Math.max(0, f.start - 30); F.to = f.end;
+    $("f-from").value = mmss(F.from); $("f-to").value = mmss(F.to);
+    refresh(); showTab("all"); window.scrollTo({top:$("view-all").offsetTop - 10});
+    return;
+  }
+  if (t.dataset.rm !== undefined) { F.players = F.players.filter(u => u !== t.dataset.rm); refresh(); return; }
+  if (t.dataset.sort !== undefined) { if (sortKey === t.dataset.sort) sortDir = -sortDir; else { sortKey = t.dataset.sort; sortDir = ["name","role","team"].includes(sortKey) ? 1 : -1; } renderPlayers(); return; }
+  if (t.id === "f-all") { F.cats = new Set(TYPES.map(x => x[0])); refresh(); return; }
+  if (t.id === "f-combat") { F.cats = new Set(["HIT", "DAMAGE", "POWER", "DEATH"]); refresh(); return; }
+});
+$("f-types").addEventListener("change", e => { const c = e.target.dataset.cat; if (!c) return; e.target.checked ? F.cats.add(c) : F.cats.delete(c); refresh(); });
+$("f-player").addEventListener("change", e => {
+  const n = e.target.value.trim().toLowerCase(); e.target.value = "";
+  for (const [u, name] of M.names) if (name.toLowerCase() === n) return addPlayer(u);
+});
+$("f-mode").onchange = e => { F.mode = e.target.value; refresh(); };
+$("f-side").onchange = e => { F.side = e.target.value; refresh(); };
+$("f-eng").onchange = e => { F.eng = e.target.checked; refresh(); };
+$("f-out").onchange = e => { F.out = e.target.checked; refresh(); };
+let timer;
+for (const id of ["f-from", "f-to", "f-text"]) $(id).addEventListener("input", () => {
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    const a = parseTime($("f-from").value), b = parseTime($("f-to").value);
+    $("f-from").style.borderColor = Number.isNaN(a) ? "var(--red)" : ""; $("f-to").style.borderColor = Number.isNaN(b) ? "var(--red)" : "";
+    F.from = Number.isNaN(a) ? null : a; F.to = Number.isNaN(b) ? null : b;
+    F.text = $("f-text").value.trim().toLowerCase();
+    shown = PAGE; renderRows();
+  }, 200);
+});
+$("f-reset").onclick = resetFilters;
+$("more").onclick = () => { shown += PAGE; renderRows(); };
+</script>
+</body>
+</html>
