@@ -317,7 +317,7 @@ if (typeof module !== "undefined") module.exports = {parseJournal, buildModel, m
 const $ = id => document.getElementById(id);
 const PAGE = 300;
 // relais Cloudflare (relay/worker.js) : le CDN de Discord n'autorise pas une autre page à lire ses fichiers
-const RELAY = "";
+const RELAY = "https://antijeu-relay.thomasgenesse.workers.dev/";
 let M = null, shown = PAGE, sortKey = "kills", sortDir = -1;
 const F = {cats:new Set(TYPES.map(t => t[0])), players:[], mode:"any", side:"any", from:null, to:null, text:"", eng:false, out:false};
 
