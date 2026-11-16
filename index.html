@@ -316,6 +316,8 @@ if (typeof module !== "undefined") module.exports = {parseJournal, buildModel, m
 // ---------------------------------------------------------------- interface
 const $ = id => document.getElementById(id);
 const PAGE = 300;
+// relais Cloudflare (relay/worker.js) : le CDN de Discord n'autorise pas une autre page à lire ses fichiers
+const RELAY = "";
 let M = null, shown = PAGE, sortKey = "kills", sortDir = -1;
 const F = {cats:new Set(TYPES.map(t => t[0])), players:[], mode:"any", side:"any", from:null, to:null, text:"", eng:false, out:false};
 
@@ -340,13 +342,16 @@ function fail(msg) {
 async function loadUrl(raw) {
   let u;
   try { u = new URL(raw.trim()); } catch { return fail("Ce n'est pas un lien valide."); }
-  if (u.protocol !== "https:" || !["cdn.discordapp.com", "media.discordapp.net"].includes(u.hostname) || !u.pathname.startsWith("/attachments/"))
+  if (u.hostname === "media.discordapp.net") u.hostname = "cdn.discordapp.com";
+  if (u.protocol !== "https:" || u.hostname !== "cdn.discordapp.com" || !u.pathname.startsWith("/attachments/"))
     return fail("Seuls les liens de fichiers Discord (cdn.discordapp.com/attachments/…) sont acceptés.");
+  if (!RELAY) return fail("Chargement par lien pas encore configuré : télécharge le fichier depuis Discord et dépose-le ici.");
   $("error").classList.add("hidden");
   $("drop").querySelector("strong").textContent = "Téléchargement du fichier Discord…";
   let res;
-  try { res = await fetch(u.href, {credentials: "omit"}); }
-  catch { return fail("Le navigateur n'a pas pu récupérer le fichier. Télécharge-le depuis Discord et dépose-le ici."); }
+  try { res = await fetch(RELAY + "?u=" + encodeURIComponent(u.href), {credentials: "omit"}); }
+  catch { return fail("Le relais est injoignable. Télécharge le fichier depuis Discord et dépose-le ici."); }
+  if (res.status === 400) return fail("Ce lien n'est pas un rapport anti-jeu (fichier …-rapport.ndjson.gz).");
   if (!res.ok) return fail(`Lien expiré ou invalide (HTTP ${res.status}) : les liens Discord expirent au bout d'environ 24 h. Dans Discord, clic droit sur le fichier → Copier le lien, puis colle-le ci-dessus.`);
   const name = decodeURIComponent(u.pathname.split("/").pop() || "rapport");
   load(await res.blob(), name);
